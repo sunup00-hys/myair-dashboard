@@ -1,34 +1,57 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.0";
-const json=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{"Content-Type":"application/json","Cache-Control":"no-store"}});
-const secret=Deno.env.get("MYAIR_DEVICE_SECRET");
-const owner=Deno.env.get("MYAIR_OWNER_USER_ID");
-const url=Deno.env.get("SUPABASE_URL");
-const adminKey=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-function sameSecret(a:string,b:string){const x=new TextEncoder().encode(a),y=new TextEncoder().encode(b);let diff=x.length^y.length;for(let i=0;i<Math.max(x.length,y.length);i++)diff|=(x[i]||0)^(y[i]||0);return diff===0;}
-function getKoreanDate(){return new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())}
-function inferDate(month:number,day:number,baseDate:string){const yr=Number(baseDate.slice(0,4)),base=new Date(baseDate+"T12:00:00Z");const c=[yr-1,yr,yr+1].map(y=>({y,date:new Date(Date.UTC(y,month-1,day,12))})).filter(z=>z.date.getUTCMonth()===month-1&&z.date.getUTCDate()===day).sort((a,b)=>Math.abs(+a.date-+base)-Math.abs(+b.date-+base));if(!c.length)throw Error("Invalid calendar date");return c[0].y+"-"+String(month).padStart(2,"0")+"-"+String(day).padStart(2,"0")}
-function parsePayload(raw:any){const obj=(raw?.data&&typeof raw.data==="object")?raw.data:raw; if(!obj||typeof obj!=="object"||Array.isArray(obj))throw Error("Expected myAir JSON dictionary");
- const entries=Object.entries(obj);const after=(label:string)=>{for(const [k,v] of entries){if(String(v).trim()===label){const n=/index:(\d+)/.exec(k);if(n&&obj["index:"+(Number(n[1])+1)]!==undefined)return String(obj["index:"+(Number(n[1])+1)]).trim();}}return null};
- const rawDate=String(obj.TherapyCardDateNav||entries.find(([,v])=>typeof v==="string"&&/\d{1,2}월\s*\d{1,2}일/.test(v))?.[1]||"");const dm=/(\d{1,2})월\s*(\d{1,2})일/.exec(rawDate);if(!dm)throw Error("Date missing");
- const tm=/^(\d{1,2}):(\d{2})$/.exec(after("사용량")||"");if(!tm||+tm[2]>59||+tm[1]>24)throw Error("Invalid usage");
- const ep=after("이벤트(시간당)"),mp=after("마스크 벗음"),seal=after("마스크 밀폐");const events=ep===null?null:Number(ep),off=mp===null?null:Number(mp);
- if(events!==null&&(!Number.isFinite(events)||events<0||events>100))throw Error("Invalid events");
- if(off!==null&&(!Number.isInteger(off)||off<0||off>100))throw Error("Invalid mask removal");
- const base=/^\d{4}-\d{2}-\d{2}$/.test(raw?.collected_date||"")?raw.collected_date:getKoreanDate();
- const used_on=inferDate(Number(dm[1]),Number(dm[2]),base);
- if(new Date(used_on+"T12:00:00Z").getTime()>Date.now()+86400000)throw Error("Future usage date");
- return {used_on,usage_minutes:+tm[1]*60 + +tm[2],events_per_hour:events,mask_off:off,mask_seal:seal?String(seal).slice(0,60):null};
-}
-Deno.serve(async(req)=>{
- if(req.method!=="POST")return json({error:"Method not allowed"},405);
- if(!secret||!owner||!url||!adminKey)return json({error:"Server not configured"},503);
- const token=req.headers.get("X-MyAir-Device-Key")||"";
- if(token.length>256||!sameSecret(token,secret))return json({error:"Unauthorized"},401);
- const type=req.headers.get("content-type")||"";if(!type.includes("application/json"))return json({error:"JSON required"},415);
- const body=await req.text();if(body.length>50000)return json({error:"Payload too large"},413);
- try{const record=parsePayload(JSON.parse(body));const db=createClient(url,adminKey,{auth:{autoRefreshToken:false,persistSession:false}});
- const {error}=await db.from("myair_records").upsert({user_id:owner,...record,updated_at:new Date().toISOString()},{onConflict:"user_id,used_on"});
- if(error){console.error("Database write failed",error.code);return json({error:"Storage unavailable"},500)}
- return json({ok:true,date:record.used_on});
- }catch(e){return json({error:e instanceof Error?e.message:"Invalid data"},400)}
+const PROJECT_URL=Deno.env.get("SUPABASE_URL")||"";
+const ADMIN=JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS")||"{}").default||Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")||"";
+const ANON=JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS")||"{}").default||Deno.env.get("SUPABASE_ANON_KEY")||"";
+const cors={"Access-Control-Allow-Origin":"https://sunup00-hys.github.io","Access-Control-Allow-Headers":"authorization,apikey,content-type,x-myair-device-key","Access-Control-Allow-Methods":"POST,OPTIONS"};
+const respond=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{"Content-Type":"application/json","Cache-Control":"no-store",...cors}});
+async function sha256(v:string){const d=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(v));return Array.from(new Uint8Array(d)).map(x=>x.toString(16).padStart(2,"0")).join("")}
+function token(){const a=crypto.getRandomValues(new Uint8Array(32));return Array.from(a).map(x=>x.toString(16).padStart(2,"0")).join("")}
+const pad=(v:number)=>String(v).padStart(2,"0");
+function dateToday(){const parts=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Seoul",year:"numeric",month:"numeric",day:"numeric"}).formatToParts(new Date());const n=(kind:string)=>Number(parts.find(x=>x.type===kind)?.value);return [n("year"),n("month"),n("day")].join("-")}
+function dateFromParts(m:number,d:number){const parts=dateToday().split("-").map(Number),ref=Date.UTC(parts[0],parts[1]-1,parts[2],12);let best:{when:number,date:string}|null=null;
+for(const y of [parts[0]-1,parts[0],parts[0]+1]){const dt=Date.UTC(y,m-1,d,12);const o=new Date(dt);if(o.getUTCDate()!==d||o.getUTCMonth()!==m-1)continue;const diff=Math.abs(dt-ref);if(!best||diff<best.when)best={when:diff,date:y+"-"+pad(m)+"-"+pad(d)}}if(!best)throw Error("Invalid date");return best.date}
+function extract(obj:Record<string,unknown>){const entry=(name:string)=>{for(const [k,v] of Object.entries(obj)){if(String(v).trim()===name){const mt=/^index:(\d+)$/.exec(k);if(mt){const next=obj["index:"+(Number(mt[1])+1)];if(next!==undefined)return String(next).trim()}}}return null};
+const dt=String(obj.TherapyCardDateNav||Object.values(obj).find(v=>typeof v==="string"&&/\d{1,2}월\s*\d{1,2}일/.test(v))||"");
+const md=/(\d{1,2})월\s*(\d{1,2})일/.exec(dt);if(!md)throw Error("Date missing");
+const t=/^(\d{1,2}):(\d{2})$/.exec(entry("사용량")||"");if(!t||+t[1]>24||+t[2]>59)throw Error("Invalid usage");
+const ep=entry("이벤트(시간당)"),off=entry("마스크 벗음"),seal=entry("마스크 밀폐");
+const events=ep===null?null:Number(ep),mask=off===null?null:Number(off);
+if(events!==null&&(!Number.isFinite(events)||events<0||events>100))throw Error("Invalid events");
+if(mask!==null&&(!Number.isInteger(mask)||mask<0||mask>100))throw Error("Invalid mask removal");
+const used_on=dateFromParts(+md[1],+md[2]);
+if(Date.parse(used_on+"T12:00:00Z")>Date.now()+86400000)throw Error("Future date");
+return {used_on,usage_minutes:+t[1]*60 + +t[2],events_per_hour:events,mask_off:mask,mask_seal:seal?.slice(0,60)||null}}
+Deno.serve(async (req)=>{
+ if(req.method==="OPTIONS")return new Response(null,{status:204,headers:cors});
+ if(req.method!=="POST")return respond({error:"Method not allowed"},405);
+ if(!PROJECT_URL||!ADMIN||!ANON)return respond({error:"Server configuration missing"},503);
+ const admin=createClient(PROJECT_URL,ADMIN,{auth:{persistSession:false,autoRefreshToken:false}});
+ const action=new URLSearchParams(new URL(req.url).search).get("action");
+ if(action==="enroll"){
+   const jwt=(req.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
+   if(!jwt)return respond({error:"Sign in first"},401);
+   const reader=createClient(PROJECT_URL,ANON,{auth:{persistSession:false,autoRefreshToken:false}});
+   const {data:{user},error:authErr}=await reader.auth.getUser(jwt);
+   if(authErr||!user)return respond({error:"Invalid session"},401);
+   const deviceKey=token(),digest=await sha256(deviceKey);
+   const {error}=await admin.from("myair_device_tokens").upsert({user_id:user.id,token_hash:digest,created_at:new Date().toISOString()},{onConflict:"user_id"});
+   if(error){console.error(error.code);return respond({error:"Unable to enroll device"},500)}
+   return respond({deviceKey,warning:"Copy now. Creating another key revokes the old key."});
+ }
+ if(action!==null)return respond({error:"Unknown action"},404);
+ const key=req.headers.get("X-MyAir-Device-Key")||"";
+ if(!/^[a-f0-9]{64}$/.test(key))return respond({error:"Unauthorized"},401);
+ const digest=await sha256(key);
+ const {data:device,error:lookErr}=await admin.from("myair_device_tokens").select("user_id").eq("token_hash",digest).maybeSingle();
+ if(lookErr||!device)return respond({error:"Unauthorized"},401);
+ const len=Number(req.headers.get("content-length")||0);
+ if(len>50000)return respond({error:"Payload too large"},413);
+ if(!(req.headers.get("content-type")||"").includes("application/json"))return respond({error:"Expected application/json"},415);
+ const text=await req.text();if(text.length>50000)return respond({error:"Payload too large"},413);
+ try{const payload=JSON.parse(text);if(!payload||typeof payload!=="object"||Array.isArray(payload))throw Error("Invalid dictionary");
+ const value=extract(payload);
+ const {error}=await admin.from("myair_records").upsert({user_id:device.user_id,...value,updated_at:new Date().toISOString()},{onConflict:"user_id,used_on"});
+ if(error){console.error(error.code);return respond({error:"Write failed"},500)}
+ return respond({ok:true,date:value.used_on});
+ }catch(e){return respond({error:e instanceof Error?e.message:"Bad request"},400)}
 });
