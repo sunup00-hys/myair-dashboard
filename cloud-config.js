@@ -1,6 +1,5 @@
-// Public configuration only. Never put a private device token or service_role key here.
-// After creating your personal Supabase project, set these two public values.
-window.MYAIR_CLOUD = {
-  url: "",
-  publishableKey: ""
+// Public Supabase project URL and publishable key. No private secrets here.
+window.MYAIR_CLOUD={
+  url:"https://mwwzfrslmqhcgywnhrir.supabase.co",
+  publishableKey:"sb_publishable_WLiTFK5j3RKU0I5ZXttDPA_uSKOn57M"
 };
