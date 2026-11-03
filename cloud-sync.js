@@ -12,6 +12,19 @@ function update(){const signed=!!auth;$("cloudLogin").hidden=signed;$("cloudSign
 $("cloudLoginBtn").onclick=async()=>{const email=$("cloudEmail").value.trim(),password=$("cloudPass").value;if(!email||!password){show("이메일과 비밀번호를 입력해 주세요.");return}try{show("로그인 확인 중…");const r=await fetch(url+"/auth/v1/token?grant_type=password",{method:"POST",headers:headers(),body:JSON.stringify({email,password})});if(!r.ok)throw Error("로그인 실패 · 개인용 Supabase 계정 확인");auth=await r.json();auth.expires_at=Math.floor(Date.now()/1000)+Number(auth.expires_in||3600);localStorage.setItem("myair-auth-session",JSON.stringify(auth));$("cloudPass").value="";update();await load()}catch(e){show(e.message)}};
 $("cloudSignupBtn").onclick=async()=>{const email=$("cloudEmail").value.trim(),password=$("cloudPass").value;if(!email||password.length<10){show("이메일과 10자 이상 비밀번호를 입력하세요.");return}try{show("개인 계정 생성 중…");const r=await fetch(url+"/auth/v1/signup?redirect_to="+encodeURIComponent("https://sunup00-hys.github.io/myair-dashboard/"),{method:"POST",headers:headers(),body:JSON.stringify({email,password})});const data=await r.json();if(!r.ok)throw Error(data.msg||data.error_description||data.message||"가입 실패");if(data.access_token){auth=data;auth.expires_at=Math.floor(Date.now()/1000)+Number(auth.expires_in||3600);localStorage.setItem("myair-auth-session",JSON.stringify(auth));$("cloudPass").value="";update();await load()}else show("가입 요청 완료 · 받은 이메일에서 확인 링크를 누른 후 로그인하세요. 비밀번호는 다시 입력해야 합니다.")}catch(e){show(e.message)}};
 async function load(){if(!await ensure()){update();return}try{show("서버 기록 불러오는 중…");const r=await fetch(url+"/rest/v1/myair_records?select=used_on,usage_minutes,events_per_hour,mask_off,mask_seal&order=used_on.asc&limit=600",{headers:{...headers(),Authorization:"Bearer "+auth.access_token}});if(!r.ok)throw Error("서버 조회 실패 ("+r.status+")");const data=await r.json();const records={};for(const row of data){records[row.used_on]={minutes:row.usage_minutes,events:row.events_per_hour===null?null:Number(row.events_per_hour),maskOff:row.mask_off,seal:row.mask_seal}}window.myAirCloudApply?.(records);show("서버 동기화 완료 · "+data.length+"일 기록") }catch(e){show(e.message)}}
+// Authenticated owner-only writes, secured by Supabase RLS.
+function requireUser(){const sub=auth?.user?.id||auth?.access_token&&JSON.parse(atob(auth.access_token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/"))).sub;if(!sub)throw Error("로그인 정보가 없습니다. 다시 로그인하세요.");return sub}
+async function mutateRecords(method,path,body){
+ if(!auth||!await ensure())throw Error("로그인이 만료되었습니다. 다시 로그인하세요.");
+ const response=await fetch(url+"/rest/v1/myair_records"+path,{method,headers:{...headers(),Authorization:"Bearer "+auth.access_token,...(method==="POST"?{Prefer:"resolution=merge-duplicates"}:{})},...(body?{body:JSON.stringify(body)}:{})});
+ if(!response.ok){const data=await response.json().catch(()=>({}));throw Error("서버 저장 실패 ("+response.status+") "+(data.message||data.error||""))}
+}
+window.myAirCloudIsSignedIn=()=>!!auth;
+window.myAirCloudSaveRecord=async(date,record)=>{const user_id=requireUser();
+ await mutateRecords("POST","?on_conflict=user_id,used_on",{user_id,used_on:date,usage_minutes:record.minutes,events_per_hour:record.events??null,mask_off:record.maskOff??null,mask_seal:record.seal??null,updated_at:new Date().toISOString()});
+};
+window.myAirCloudDeleteRecord=async(date)=>{requireUser();await mutateRecords("DELETE","?used_on=eq."+encodeURIComponent(date))};
+window.myAirCloudDeleteAll=async()=>{requireUser();await mutateRecords("DELETE","?used_on=gte.1900-01-01")};
 $("cloudEnroll").onclick=async()=>{
  if(!await ensure()){update();show("다시 로그인해 주세요.");return}
  if(!confirm("MacroDroid 전송 비밀키를 발급할까요? 이미 등록된 키가 있다면 즉시 무효화됩니다."))return;
