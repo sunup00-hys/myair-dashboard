@@ -203,7 +203,7 @@ function renderHistory(){
    for(const p of pts){const i=Math.round((historyDateUTC(p.date).getTime()-from)/utcDay),x=xFor(i,allDays),y=top+plotH*(1-p.minutes/60/maxHour);const dot=el('circle',{cx:x,cy:y,r:3.5,fill:p.type==='actual'?'#087bd5':'#9fc0d3',stroke:'#fff','stroke-width':.8});const tip=el('title',{},dot);tip.textContent=p.date+' · '+Math.floor(p.minutes/60)+'시간 '+Math.round(p.minutes%60)+'분 ('+(p.type==='actual'?'실측':'추정')+')'}
   }else{
    const slots=totalSlots;let w=Math.min(32,plotW/slots*.68);
-   for(let i=0;i<slots;i++){const p=pts[i];const x=xFor(i,slots);if(!p)continue;,h=plotH*Math.min(1,p.minutes/60/maxHour);
+   for(let i=0;i<slots;i++){const p=pts[i];const x=xFor(i,slots);if(!p)continue;const h=plotH*Math.min(1,p.minutes/60/maxHour);
     const rect=el('rect',{x:x-w/2,y:top+plotH-h,width:w,height:Math.max(1,h),rx:3,fill:p.type==='actual'?'#087bd5':'#76b4e5'});
     const tip=el('title',{},rect);tip.textContent=p.date+' · 기록 '+p.count+'일 평균 '+Math.floor(p.minutes/60)+'시간 '+Math.round(p.minutes%60)+'분';
     if(mode==='monthly'||i%Math.max(1,Math.ceil(slots/10))===0){const label=el('text',{x,y:height-10,'font-size':11,'text-anchor':'middle',fill:'#8190a3'});label.textContent=mode==='monthly'?p.date.slice(2):p.date.slice(5)}
