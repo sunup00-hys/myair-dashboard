@@ -61,13 +61,36 @@ function render(){
 }
 function parseText(text){
  let data;try{data=JSON.parse(text)}catch{throw Error('JSON 형식이 아닙니다. MacroDroid의 Dictionary 전체를 JSON으로 저장해 주세요.')}
- const entries=Object.entries(data), byLabel=label=>{for(let [k,v] of entries){if(String(v).trim()===label){let z=/index:(\d+)/.exec(k);if(z){let next=data['index:'+(Number(z[1])+1)];if(next!==undefined)return String(next).trim()}}}return null};
+ const entries=Object.entries(data);
+ // Older myAir layouts put each value after its label; newer layouts put it before.
+ const byLabel=(label,valid)=>{
+   for(const [k,v] of entries){
+     if(String(v).trim()!==label)continue;
+     const m=/index:(\d+)/.exec(k);if(!m)continue;
+     const n=Number(m[1]);
+     for(const neighbor of [data['index:'+(n-1)],data['index:'+(n+1)]]){
+       if(neighbor!==undefined&&neighbor!==null){
+         const value=String(neighbor).trim();
+         if(valid(value))return value;
+       }
+     }
+   }
+   return null;
+ };
  const rawDate=String(data.TherapyCardDateNav||entries.find(([,v])=>typeof v==='string'&&/\d{1,2}월\s*\d{1,2}일/.test(v))?.[1]||'');
  const dm=/(\d{1,2})월\s*(\d{1,2})일/.exec(rawDate);if(!dm)throw Error('날짜를 찾지 못했습니다.');
- const raw=byLabel('사용량'),tm=/^(\d{1,2}):(\d{2})$/.exec(raw||'');if(!tm||Number(tm[2])>59)throw Error('사용량 값을 읽지 못했습니다.');
- const [selectedYear]= $('month').value.split('-').map(Number), month=Number(dm[1]),day=Number(dm[2]);if(month<1||month>12||day<1||day>days(selectedYear,month))throw Error('날짜 범위가 잘못됐습니다.');
- const eventRaw=byLabel('이벤트(시간당)'),offRaw=byLabel('마스크 벗음'),eventNum=eventRaw!==null?Number(eventRaw):NaN,offNum=offRaw!==null?Number(offRaw):NaN;
- return {date:selectedYear+'-'+pad(month)+'-'+pad(day),record:{minutes:Number(tm[1])*60+Number(tm[2]),events:Number.isFinite(eventNum)&&eventNum>=0?eventNum:null,maskOff:Number.isInteger(offNum)&&offNum>=0?offNum:null,seal:byLabel('마스크 밀폐')||null}};
+ const raw=byLabel('사용량',v=>/^\d{1,2}:\d{2}$/.test(v));
+ const tm=/^(\d{1,2}):(\d{2})$/.exec(raw||'');if(!tm||Number(tm[2])>59)throw Error('사용량 값을 읽지 못했습니다.');
+ const selectedYear=Number($('month').value.split('-')[0]);
+ const detectedYear=/(20\d{2})\s*년/.exec(rawDate);
+ const year=detectedYear?Number(detectedYear[1]):selectedYear;
+ const month=Number(dm[1]),day=Number(dm[2]);
+ if(month<1||month>12||day<1||day>days(year,month))throw Error('날짜 범위가 잘못됐습니다.');
+ const eventRaw=byLabel('이벤트(시간당)',v=>/^\d+(?:\.\d+)?$/.test(v));
+ const offRaw=byLabel('마스크 벗음',v=>/^\d+$/.test(v));
+ const seal=byLabel('마스크 밀폐',v=>['좋음','보통','나쁨','양호','매우 좋음'].includes(v));
+ const eventNum=eventRaw!==null?Number(eventRaw):NaN,offNum=offRaw!==null?Number(offRaw):NaN;
+ return {date:year+'-'+pad(month)+'-'+pad(day),record:{minutes:Number(tm[1])*60+Number(tm[2]),events:Number.isFinite(eventNum)&&eventNum>=0?eventNum:null,maskOff:Number.isInteger(offNum)&&offNum>=0?offNum:null,seal:seal||null}};
 }
 $('month').onchange=render;
 async function persist(d,r){
