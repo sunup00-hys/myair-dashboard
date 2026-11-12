@@ -171,7 +171,7 @@ function historySeries(){
 function renderHistory(){
  const {merged,start,end}=historySeries(), entries=Object.entries(merged).sort(([a],[b])=>a.localeCompare(b));
  const sum=entries.reduce((t,[,v])=>t+v.minutes,0);
- $('hist-avg').textContent=entries.length?Math.floor((sum/entries.length)/60)+'시간 '+pad(Math.round(sum/entries.length)%60)+'분':'—';
+ const averageMinutes=entries.length?Math.round(sum/entries.length):0;$('hist-avg').textContent=entries.length?Math.floor(averageMinutes/60)+'시간 '+pad(averageMinutes%60)+'분':'—';
  $('hist-count').textContent=entries.length+'일';
  $('hist-status').textContent='기간 '+start+' ~ '+end+' · 추정 '+entries.filter(([,v])=>v.type==='estimated').length+'일 / 실측 '+entries.filter(([,v])=>v.type==='actual').length+'일 · 365일 보고서 추정값은 오차가 있을 수 있습니다.';
  const utcDay=86400000,from=historyDateUTC(start).getTime(),to=historyDateUTC(end).getTime();
@@ -182,11 +182,17 @@ function renderHistory(){
   const wk=histKey(mon),mo=date.slice(0,7);
   for(const [map,k] of [[byWeek,wk],[byMonth,mo]]){if(!map.has(k))map.set(k,[]);map.get(k).push(value)}
  }
- const aggregate=map=>[...map.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([date,vs])=>({date,minutes:vs.reduce((s,x)=>s+x.minutes,0)/vs.length,type:vs.every(x=>x.type==='actual')?'actual':'estimated',count:vs.length}));
+ const aggregate=(map,period)=>{
+  const dates=[],startDt=historyDateUTC(start),endDt=historyDateUTC(end);
+  if(period==='week'){const offset=(startDt.getUTCDay()+6)%7;startDt.setUTCDate(startDt.getUTCDate()-offset)}
+  else startDt.setUTCDate(1);
+  while(startDt<=endDt){dates.push(period==='week'?histKey(startDt):histKey(startDt).slice(0,7));if(period==='week')startDt.setUTCDate(startDt.getUTCDate()+7);else startDt.setUTCMonth(startDt.getUTCMonth()+1)}
+  return dates.map(date=>{const vs=map.get(date)||[];return vs.length?{date,minutes:vs.reduce((s,x)=>s+x.minutes,0)/vs.length,type:vs.every(x=>x.type==='actual')?'actual':'estimated',count:vs.length}:null})
+ };
  const createSVG=(host,mode,pts,totalSlots)=>{
   const width=mode==='daily'?Math.max(660,totalSlots*3.8):mode==='weekly'?Math.max(660,totalSlots*23):Math.max(420,totalSlots*46);
   const height=230,padLeft=36,padRight=15,top=15,bottom=34,plotW=width-padLeft-padRight,plotH=height-top-bottom;
-  const maxMinutes=Math.max(600,...pts.map(p=>p.minutes));const maxHour=Math.ceil(maxMinutes/60/2)*2;
+  const maxMinutes=Math.max(600,...pts.filter(Boolean).map(p=>p.minutes));const maxHour=Math.ceil(maxMinutes/60/2)*2;
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('width',width);svg.setAttribute('height',height);svg.setAttribute('viewBox','0 0 '+width+' '+height);svg.setAttribute('role','img');svg.setAttribute('aria-label',(mode==='daily'?'일별 점':mode==='weekly'?'주별 막대':'월별 막대')+' 그래프, 기록 없는 기간은 미표시');
   const ns='http://www.w3.org/2000/svg';
   const el=(tag,attrs,parent=svg)=>{const n=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))n.setAttribute(k,v);parent.appendChild(n);return n};
@@ -197,7 +203,7 @@ function renderHistory(){
    for(const p of pts){const i=Math.round((historyDateUTC(p.date).getTime()-from)/utcDay),x=xFor(i,allDays),y=top+plotH*(1-p.minutes/60/maxHour);const dot=el('circle',{cx:x,cy:y,r:3.5,fill:p.type==='actual'?'#087bd5':'#9fc0d3',stroke:'#fff','stroke-width':.8});const tip=el('title',{},dot);tip.textContent=p.date+' · '+Math.floor(p.minutes/60)+'시간 '+Math.round(p.minutes%60)+'분 ('+(p.type==='actual'?'실측':'추정')+')'}
   }else{
    const slots=totalSlots;let w=Math.min(32,plotW/slots*.68);
-   for(let i=0;i<slots;i++){const p=pts[i];if(!p)continue;const x=xFor(i,slots),h=plotH*Math.min(1,p.minutes/60/maxHour);
+   for(let i=0;i<slots;i++){const p=pts[i];const x=xFor(i,slots);if(!p)continue;,h=plotH*Math.min(1,p.minutes/60/maxHour);
     const rect=el('rect',{x:x-w/2,y:top+plotH-h,width:w,height:Math.max(1,h),rx:3,fill:p.type==='actual'?'#087bd5':'#76b4e5'});
     const tip=el('title',{},rect);tip.textContent=p.date+' · 기록 '+p.count+'일 평균 '+Math.floor(p.minutes/60)+'시간 '+Math.round(p.minutes%60)+'분';
     if(mode==='monthly'||i%Math.max(1,Math.ceil(slots/10))===0){const label=el('text',{x,y:height-10,'font-size':11,'text-anchor':'middle',fill:'#8190a3'});label.textContent=mode==='monthly'?p.date.slice(2):p.date.slice(5)}
@@ -207,7 +213,7 @@ function renderHistory(){
  };
  const points=entries.map(([date,v])=>({date,...v}));
  createSVG($('hist-daily'),'daily',points,allDays);
- const weeks=aggregate(byWeek),months=aggregate(byMonth);
+ const weeks=aggregate(byWeek,'week'),months=aggregate(byMonth,'month');
  createSVG($('hist-weekly'),'weekly',weeks,weeks.length);
  createSVG($('hist-monthly'),'monthly',months,months.length);
 }
