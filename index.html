@@ -194,7 +194,7 @@ function renderHistory(){
  const hoursLabel=minutes=>(Math.round(minutes/60*10)/10).toFixed(1);
  const createSVG=(host,mode,pts,totalSlots)=>{
   const isDaily=mode==='daily',slots=isDaily?totalSlots:totalSlots+1;
-  const width=isDaily?Math.max(660,totalSlots*7.2):mode==='weekly'?Math.max(660,slots*48):Math.max(440,slots*53);
+  const width=isDaily?Math.max(660,totalSlots*3.8):mode==='weekly'?Math.max(660,slots*48):Math.max(440,slots*53);
   const height=238,padLeft=8,padRight=20,top=24,bottom=38,plotW=width-padLeft-padRight,plotH=height-top-bottom;
   const available=pts.filter(Boolean),mean=available.length?available.reduce((t,p)=>t+p.minutes,0)/available.length:null;
   const maxMinutes=Math.max(600,...available.map(p=>p.minutes));
@@ -218,7 +218,7 @@ function renderHistory(){
   if(isDaily){
    for(let i=0;i<allDays;i++){
     if(i%7!==0)continue;
-    const dt=new Date(from+i*utcDay),label=el('text',{x:xFor(i,allDays),y:height-11,'font-size':11,'text-anchor':'middle',fill:'#8190a3'});
+    const dt=new Date(from+i*utcDay),label=el('text',{x:xFor(i,allDays),y:height-11,'font-size':8,'text-anchor':'middle',fill:'#8190a3'});
     label.textContent=(dt.getUTCMonth()+1)+'/'+dt.getUTCDate();
    }
    if(mean!==null){
