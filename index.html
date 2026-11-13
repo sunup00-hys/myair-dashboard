@@ -194,10 +194,9 @@ function renderHistory(){
  const hoursLabel=minutes=>(Math.round(minutes/60*10)/10).toFixed(1);
  const createSVG=(host,mode,pts,totalSlots)=>{
   const isDaily=mode==='daily',slots=isDaily?totalSlots:totalSlots+1;
-  // Daily timeline: calibrate to the actual visible plot area so about 45 days appear at the rightmost scroll position.
-  // The previous 45 divisor showed only ~39 days on mobile; 52 compensates for the observed viewport/plot-area difference.
+  // Daily timeline: calibrate to show about 90 days in the visible mobile viewport.
   const dailyViewport=$('hist-day-scroll')?.clientWidth||320;
-  const width=isDaily?Math.max(dailyViewport,Math.ceil((dailyViewport-28)*totalSlots/52)+28):mode==='weekly'?Math.max(660,slots*48):Math.max(440,slots*53);
+  const width=isDaily?Math.max(dailyViewport,Math.ceil((dailyViewport-28)*totalSlots/104)+28):mode==='weekly'?Math.max(660,slots*48):Math.max(440,slots*53);
   const height=238,padLeft=8,padRight=20,top=24,bottom=38,plotW=width-padLeft-padRight,plotH=height-top-bottom;
   const available=pts.filter(Boolean),mean=available.length?available.reduce((t,p)=>t+p.minutes,0)/available.length:null;
   const maxMinutes=Math.max(600,...available.map(p=>p.minutes));
