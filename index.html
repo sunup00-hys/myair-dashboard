@@ -191,7 +191,7 @@ function renderHistory(){
   return dates.map(date=>{const vs=map.get(date)||[];return vs.length?{date,minutes:vs.reduce((s,x)=>s+x.minutes,0)/vs.length,type:vs.every(x=>x.type==='actual')?'actual':'estimated',count:vs.length}:null})
  };
 
- const hoursLabel=minutes=>(Math.round(minutes/60*10)/10).toFixed(1)+'h';
+ const hoursLabel=minutes=>(Math.round(minutes/60*10)/10).toFixed(1);
  const createSVG=(host,mode,pts,totalSlots)=>{
   const isDaily=mode==='daily',slots=isDaily?totalSlots:totalSlots+1;
   const width=isDaily?Math.max(660,totalSlots*3.8):mode==='weekly'?Math.max(660,slots*41):Math.max(440,slots*53);
@@ -223,15 +223,19 @@ function renderHistory(){
    }
    if(mean!==null){
     const y=top+plotH*(1-mean/60/maxHour);
-    const line=el('line',{x1:padLeft,y1:y,x2:width-padRight,y2:y,stroke:'#87ceeb','stroke-opacity':.5,'stroke-width':2});
-    const label=el('text',{x:width-padRight-3,y:Math.max(13,y-6),'text-anchor':'end','font-size':12,'font-weight':700,fill:'#2985b2'});
-    label.textContent='평균 '+hoursLabel(mean);
-    const tip=el('title',{},line);tip.textContent='선택한 '+historyMonths+'개월 · 기록된 '+available.length+'일 평균 '+hoursLabel(mean);
+    const line=el('line',{x1:padLeft,y1:y,x2:width-padRight,y2:y,stroke:'#f28c28','stroke-width':2});
+    const tip=el('title',{},line);tip.textContent='선택한 '+historyMonths+'개월 · 기록된 '+available.length+'일 평균 '+hoursLabel(mean)+'시간';
    }
    for(const p of pts){
     const i=Math.round((historyDateUTC(p.date).getTime()-from)/utcDay),x=xFor(i,allDays),y=top+plotH*(1-p.minutes/60/maxHour);
     const dot=el('circle',{cx:x,cy:y,r:3.5,fill:p.type==='actual'?'#087bd5':'#9fc0d3',stroke:'#fff','stroke-width':.8});
     const tip=el('title',{},dot);tip.textContent=p.date+' · '+Math.floor(p.minutes/60)+'시간 '+Math.round(p.minutes%60)+'분 ('+(p.type==='actual'?'실측':'추정')+')';
+   }
+   // Average label at the right (3 o'clock), rendered after the points so it stays in front.
+   if(mean!==null){
+    const y=top+plotH*(1-mean/60/maxHour);
+    const label=el('text',{x:width-padRight-4,y:y-6,'text-anchor':'end','font-size':12,'font-weight':800,fill:'#d47416',stroke:'#fff','stroke-width':3,'paint-order':'stroke','stroke-linejoin':'round'});
+    label.textContent=hoursLabel(mean);
    }
   }else{
    const w=Math.min(34,plotW/slots*.69);
