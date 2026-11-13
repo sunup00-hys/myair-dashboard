@@ -218,8 +218,10 @@ function renderHistory(){
   axisHost.replaceChildren(axis);
   const xFor=(i,n)=>padLeft+(i+.5)*plotW/n;
   if(isDaily){
-   for(let i=0;i<allDays;i++){
-    if(i%7!==0)continue;
+   // Anchor the 14-day ticks to Mondays, regardless of the selected range start date.
+   const firstWeekday=new Date(from).getUTCDay();
+   const firstMondayOffset=(8-firstWeekday)%7;
+   for(let i=firstMondayOffset;i<allDays;i+=14){
     const dt=new Date(from+i*utcDay),label=el('text',{x:xFor(i,allDays),y:height-11,'font-size':8,'text-anchor':'middle',fill:'#8190a3'});
     label.textContent=(dt.getUTCMonth()+1)+'/'+dt.getUTCDate();
    }
