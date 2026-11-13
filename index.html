@@ -194,7 +194,7 @@ function renderHistory(){
  const hoursLabel=minutes=>(Math.round(minutes/60*10)/10).toFixed(1);
  const createSVG=(host,mode,pts,totalSlots)=>{
   const isDaily=mode==='daily',slots=isDaily?totalSlots:totalSlots+1;
-  const width=isDaily?Math.max(660,totalSlots*3.8):mode==='weekly'?Math.max(660,slots*41):Math.max(440,slots*53);
+  const width=isDaily?Math.max(660,totalSlots*7.2):mode==='weekly'?Math.max(660,slots*48):Math.max(440,slots*53);
   const height=238,padLeft=8,padRight=20,top=24,bottom=38,plotW=width-padLeft-padRight,plotH=height-top-bottom;
   const available=pts.filter(Boolean),mean=available.length?available.reduce((t,p)=>t+p.minutes,0)/available.length:null;
   const maxMinutes=Math.max(600,...available.map(p=>p.minutes));
@@ -217,7 +217,7 @@ function renderHistory(){
   const xFor=(i,n)=>padLeft+(i+.5)*plotW/n;
   if(isDaily){
    for(let i=0;i<allDays;i++){
-    if(i%Math.max(1,Math.round(allDays/8))!==0&&i!==allDays-1)continue;
+    if(i%7!==0)continue;
     const dt=new Date(from+i*utcDay),label=el('text',{x:xFor(i,allDays),y:height-11,'font-size':11,'text-anchor':'middle',fill:'#8190a3'});
     label.textContent=(dt.getUTCMonth()+1)+'/'+dt.getUTCDate();
    }
@@ -239,12 +239,18 @@ function renderHistory(){
    }
   }else{
    const w=Math.min(34,plotW/slots*.69);
+   const firstWeek=historyDateUTC(start);
+   firstWeek.setUTCDate(firstWeek.getUTCDate()-(firstWeek.getUTCDay()+6)%7);
    for(let i=0;i<slots;i++){
     const isAverage=i===totalSlots,p=isAverage?(mean===null?null:{date:'전체 평균',minutes:mean,type:'average',count:available.length}):pts[i];
     const x=xFor(i,slots);
-    if(isAverage||mode==='monthly'||i%Math.max(1,Math.ceil(totalSlots/10))===0){
+    if(isAverage||mode==='monthly'||mode==='weekly'){
      const label=el('text',{x,y:height-11,'font-size':11,'text-anchor':'middle',fill:isAverage?'#cb732b':'#8190a3','font-weight':isAverage?700:400});
-     label.textContent=isAverage?'평균':p?(mode==='monthly'?p.date.slice(2):p.date.slice(5)):'';
+     if(isAverage)label.textContent='평균';
+     else if(mode==='weekly'){
+      const weekDate=new Date(firstWeek.getTime()+i*7*utcDay);
+      label.textContent=(weekDate.getUTCMonth()+1)+'/'+weekDate.getUTCDate();
+     }else label.textContent=p?p.date.slice(2):'';
     }
     if(!p)continue;
     const h=plotH*Math.min(1,p.minutes/60/maxHour);
